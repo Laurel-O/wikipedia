@@ -1,0 +1,74 @@
+#Scraping a list of AAAS fellows
+
+library(rvest)
+library(humaniformat)
+
+#step 1. scrape the list of all AAAS fellows in 2020 into a vector
+## You can use developer tools in chrome, or a plugin called Selector Gadget, to identify the html tags around people's names.
+url<-"https://www.science.org/doi/10.1126/science.370.6520.1048/"
+tag_name <- "b"
+
+##This is the simple code for extracting and parsing names from just one web page 
+page <- read_html(url)
+
+
+AAAS <- page %>%
+  html_nodes(tag_name) %>%
+  html_text(trim = TRUE) %>%
+  gsub(pattern=",", replacement=" ")
+show(AAAS)
+
+AAASfirstlast<-parse_names(AAAS)
+
+#Repeat with 2021 fellows using url https://www.science.org/doi/10.1126/science.ada0325
+
+
+#Then merged 2020 and 2021 fellows manually (sorry, this is not terribly reproducible!)
+
+
+#Step 2. Check for Wikipedia pages about each scientist
+
+#From that combined data set, used the WikipediR library function that pulls page content, along with tryCatch to skip errors. I built this approach from these three Stack Overflow  pages: 
+#First the for loop: https://stackoverflow.com/questions/33333686/automate-searching-of-pages-such-as-wikipedia/33333901#33333901
+#Then the TryCatch https://stackoverflow.com/questions/65628121/how-to-skip-an-item-in-a-loop-in-r-if-it-returns-an-error
+#A tutorial on TryCatch https://stackoverflow.com/questions/12193779/how-to-write-trycatch-in-r
+
+
+#Is therea wikipedia page for this individual?
+
+library(WikipediR)
+j<- 1
+pgs<-vector(, length=length(AAAS))
+for(i in AAAS$Full.Name) {
+  tryCatch(
+    expr = {
+      temp = page_content(domain="wikipedia.org",page_name=i, as_wikitext=TRUE)
+      pgs2021[j] = temp$parse$wikitext[1] 
+    }, 
+    error=function(e) {pgs[j]="ERROR"},
+    finally = {j<-j+1})}
+head(pgs)
+
+
+#OK so we now have a character vector, AAAS, and a vector of lists, pgs
+AAASfellows <- data.frame(cbind(AAAS,pgs), colnames=c(Name,Wiki_page))
+
+#I started getting errors here, because page_content returns data as a list. Ended up merging the two data sets manually to save time. 
+#Because page_content also includes the content of the page, during this step I also checked for pages that described an individual who was clearly not the recent AAAS inductee (e.g., a historical figure by the same name, a disambiguation page, etc.). These were removed manually.
+
+
+#Step 3. Check whether these researchers are listed at all in Articles For Deletion?
+library(stringr)
+AAAS2021<-read.csv("~/2022.1.12 AAAS fellows 2022 with wikistatus.csv")
+Underscorename<-str_c(AAAS2021$First.Name, AAAS2021$Last.Name, sep="_")
+j<- 1
+delpgs<-vector(, length=length(AAAS2021))
+for(i in Underscorename) {
+  tryCatch(
+    expr = {
+      temp = page_content(domain="wikipedia.org",page_name=str_c("Wikipedia:Articles_for_deletion/",i, sep=""), as_wikitext=TRUE)
+      delpgs[j] = temp$parse$wikitext[1] 
+    }, 
+    error=function(e) {delpgs[j]="ERROR"},
+    finally = {j<-j+1})}
+head(delpgs)
